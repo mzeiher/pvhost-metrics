@@ -1,0 +1,24 @@
+# Default values for pvhost-helm.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+podAnnotations: 
+  prometheus.io/path: /metrics
+  prometheus.io/port: "8080"
+  prometheus.io/scheme: http
+  prometheus.io/scrape: "true"
+imagePullSecrets: {}
+podSecurityContext: {}
+securityContext: {}
+
+port: 8080
+
+image:
+  repository: mzeiher/pvhost-metrics
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+pv:
+  claimName: ""
+  hostPath: "/data"
+  storageCapacity: 1Gi
