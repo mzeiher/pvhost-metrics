@@ -22,23 +22,23 @@ var (
 	volume_stat_size_bytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_size_bytes",
 		Help: "Size of all files in the path of the volume",
-	}, []string{"host_path"})
+	}, []string{"host_path", "host_device"})
 	volume_stat_files = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_files",
 		Help: "number of files in the directory",
-	}, []string{"host_path"})
+	}, []string{"host_path", "host_device"})
 	volume_stat_directories = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_directories",
 		Help: "number of directories in the directory",
-	}, []string{"host_path"})
+	}, []string{"host_path", "host_device"})
 	volume_stat_errors = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_errors",
 		Help: "number of errors while reading files",
-	}, []string{"host_path"})
-	volume_stat_runtime_seconds = promauto.NewGauge(prometheus.GaugeOpts{
+	}, []string{"host_path", "host_device"})
+	volume_stat_runtime_seconds = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_runtime_seconds",
 		Help: "stat time in microseconds",
-	})
+	}, []string{"host_path", "host_device"})
 	volume_stat_blocks_available_bytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_blocks_available_bytes",
 		Help: "available blocks on path",
@@ -123,11 +123,11 @@ func UpdateInfo(path string, mountInfo MountInfo) {
 	usage := NewDiskUsage(path)
 	runtime = time.Now().UnixMicro() - runtime
 
-	volume_stat_runtime_seconds.Set(float64(runtime / 1000000))
-	volume_stat_size_bytes.With(prometheus.Labels{"host_path": mountInfo.hostPath}).Set(float64(size))
-	volume_stat_files.With(prometheus.Labels{"host_path": mountInfo.hostPath}).Set(float64(files))
-	volume_stat_directories.With(prometheus.Labels{"host_path": mountInfo.hostPath}).Set(float64(folders))
-	volume_stat_errors.With(prometheus.Labels{"host_path": mountInfo.hostPath}).Set(float64(errors))
+	volume_stat_runtime_seconds.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(runtime / 1000000))
+	volume_stat_size_bytes.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(size))
+	volume_stat_files.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(files))
+	volume_stat_directories.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(folders))
+	volume_stat_errors.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(errors))
 	volume_stat_blocks_available_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Available()))
 	volume_stat_blocks_free_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Free()))
 	volume_stat_blocks_used_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Used()))
