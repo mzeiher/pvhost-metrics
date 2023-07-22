@@ -16,9 +16,10 @@ port: 8080
 image:
   repository: mzeiher/pvhost-metrics
   tag: "latest"
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 pv:
   claimName: ""
   hostPath: "/data"
   storageCapacity: 1Gi
+  gid: 0

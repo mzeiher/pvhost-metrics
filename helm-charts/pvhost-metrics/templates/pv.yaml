@@ -3,6 +3,8 @@ kind: PersistentVolume
 metadata:
   name: {{ .Values.pv.claimName | default (include "pvhost-helm.fullname" .) }}-volume
   namespace: {{ .Release.Namespace }}
+  annotations:
+    pv.beta.kubernetes.io/gid: {{.Values.pv.gid}}
   labels:
     type: local
 spec:

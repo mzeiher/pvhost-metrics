@@ -31,6 +31,8 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
+            - "-pvname"
+            - "{{ .Values.pv.claimName | default (include "pvhost-helm.fullname" .) }}-volume"
             - "/data"
           volumeMounts:
             - mountPath: /data
