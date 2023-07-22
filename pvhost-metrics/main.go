@@ -74,11 +74,11 @@ func main() {
 
 	mountInfo := NewMountInfo(path)
 
-	UpdateInfo(path, mountInfo, pvname)
+	UpdateInfo(path, mountInfo, *pvname)
 
 	go func() {
 		for range ticker.C {
-			UpdateInfo(path, mountInfo, pvname)
+			UpdateInfo(path, mountInfo, *pvname)
 		}
 	}()
 
