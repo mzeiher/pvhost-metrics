@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -22,23 +23,23 @@ var (
 	volume_stat_size_bytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_size_bytes",
 		Help: "Size of all files in the path of the volume",
-	}, []string{"host_path", "host_device"})
+	}, []string{"host_mount_path", "host_device", "path"})
 	volume_stat_files = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_files",
 		Help: "number of files in the directory",
-	}, []string{"host_path", "host_device"})
+	}, []string{"host_mount_path", "host_device", "path"})
 	volume_stat_directories = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_directories",
 		Help: "number of directories in the directory",
-	}, []string{"host_path", "host_device"})
+	}, []string{"host_mount_path", "host_device", "path"})
 	volume_stat_errors = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_errors",
 		Help: "number of errors while reading files",
-	}, []string{"host_path", "host_device"})
+	}, []string{"host_mount_path", "host_device", "path"})
 	volume_stat_runtime_seconds = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_runtime_seconds",
 		Help: "stat time in microseconds",
-	}, []string{"host_path", "host_device"})
+	}, []string{"host_mount_path", "host_device", "path"})
 	volume_stat_blocks_available_bytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "volume_stat_blocks_available_bytes",
 		Help: "available blocks on path",
@@ -68,7 +69,6 @@ func main() {
 		panic("no path defined")
 	}
 
-	quit := make(chan struct{})
 	ticker := time.NewTicker(60 * time.Second)
 
 	mountInfo := NewMountInfo(path)
@@ -76,13 +76,8 @@ func main() {
 	UpdateInfo(path, mountInfo)
 
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				UpdateInfo(path, mountInfo)
-			case <-quit:
-				return
-			}
+		for range ticker.C {
+			UpdateInfo(path, mountInfo)
 		}
 	}()
 
@@ -95,8 +90,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
+
+	sigs := make(chan os.Signal, 1)
+
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
 	ticker.Stop()
-	quit <- struct{}{}
 }
 
 func UpdateInfo(path string, mountInfo MountInfo) {
@@ -123,11 +122,11 @@ func UpdateInfo(path string, mountInfo MountInfo) {
 	usage := NewDiskUsage(path)
 	runtime = time.Now().UnixMicro() - runtime
 
-	volume_stat_runtime_seconds.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(runtime / 1000000))
-	volume_stat_size_bytes.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(size))
-	volume_stat_files.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(files))
-	volume_stat_directories.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(folders))
-	volume_stat_errors.With(prometheus.Labels{"host_path": mountInfo.hostPath, "host_device": mountInfo.hostDevice}).Set(float64(errors))
+	volume_stat_runtime_seconds.With(prometheus.Labels{"host_mount_path": mountInfo.mountPath, "host_device": mountInfo.hostDevice, "path": mountInfo.path}).Set(float64(runtime / 1000000))
+	volume_stat_size_bytes.With(prometheus.Labels{"host_mount_path": mountInfo.mountPath, "host_device": mountInfo.hostDevice, "path": mountInfo.path}).Set(float64(size))
+	volume_stat_files.With(prometheus.Labels{"host_mount_path": mountInfo.mountPath, "host_device": mountInfo.hostDevice, "path": mountInfo.path}).Set(float64(files))
+	volume_stat_directories.With(prometheus.Labels{"host_mount_path": mountInfo.mountPath, "host_device": mountInfo.hostDevice, "path": mountInfo.path}).Set(float64(folders))
+	volume_stat_errors.With(prometheus.Labels{"host_mount_path": mountInfo.mountPath, "host_device": mountInfo.hostDevice, "path": mountInfo.path}).Set(float64(errors))
 	volume_stat_blocks_available_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Available()))
 	volume_stat_blocks_free_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Free()))
 	volume_stat_blocks_used_bytes.With(prometheus.Labels{"host_device": mountInfo.hostDevice}).Set(float64(usage.Used()))
@@ -135,8 +134,9 @@ func UpdateInfo(path string, mountInfo MountInfo) {
 }
 
 type MountInfo struct {
-	hostPath   string
+	mountPath  string
 	hostDevice string
+	path       string
 }
 
 func NewMountInfo(volumePath string) MountInfo {
@@ -148,7 +148,7 @@ func NewMountInfo(volumePath string) MountInfo {
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
-		return MountInfo{hostPath: "unknown", hostDevice: "unknown"}
+		return MountInfo{mountPath: "unknown", hostDevice: "unknown"}
 	}
 	defer file.Close()
 
@@ -156,7 +156,7 @@ func NewMountInfo(volumePath string) MountInfo {
 	fileScanner.Split(bufio.ScanLines)
 
 	bestMatchLength := 0
-	bestMatch := MountInfo{hostPath: "unknown", hostDevice: "unknown"}
+	bestMatch := MountInfo{mountPath: "unknown", hostDevice: "unknown"}
 
 	for fileScanner.Scan() {
 		matcher := regexp.MustCompile(`\d+ \d+ ((\d+):(\d+)) ([^ ]+) ([^ ]+) [^-]+ - ([^ ]+) ([^ ]+)`)
@@ -168,8 +168,9 @@ func NewMountInfo(volumePath string) MountInfo {
 			if strings.HasPrefix(absPath, mountPath) && len(mountPath) > bestMatchLength {
 				fmt.Printf("new best match found: %s\n", mountPath)
 				bestMatch = MountInfo{
-					hostPath:   subMatch[4],
+					mountPath:  subMatch[4],
 					hostDevice: subMatch[7],
+					path:       absPath,
 				}
 				bestMatchLength = len(mountPath)
 			}
